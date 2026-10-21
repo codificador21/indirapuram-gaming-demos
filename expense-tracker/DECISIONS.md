@@ -49,3 +49,91 @@ Newest entries are appended at the bottom of each section.
 - `scripts/migrate.ts` runs the SQL migrations and then upserts the built-in categories from
   `src/lib/categories.ts` and the singleton settings row. One source of truth, safe to re-run on
   every deploy. Renamed categories / custom colours are preserved.
+
+## Parsing & ingestion
+
+### D8. Parser = per-format templates + generic fallback
+- **Chose:** `src/lib/parser/formats.ts` holds one named-group regex per known alert layout (HDFC,
+  ICICI, SBI, Axis, Kotak, Paytm, PhonePe, GPay — SMS and email). When no template matches,
+  bank-agnostic extractors in `generic.ts` try each field on their own. Fixtures in `fixtures.ts`
+  (49 samples) each have a test.
+- **Why:** templates give exact, predictable results for the formats I actually receive; the generic
+  layer means a slightly changed bank format still usually parses instead of falling to review.
+- **Change it:** to support a new format, paste the alert into `fixtures.ts` with the expected
+  result, add a template, `npm test`.
+
+### D9. What counts as noise (ignored, but still stored)
+- OTPs, promos, payment-due / statement / "will be debited" reminders, declined/failed
+  transactions, UPI collect requests, balance-only messages, and messages with no amount and no
+  money verb. They are saved with `status = ignored` and visible under Review → Ignored, so a
+  misclassified message can still be turned into a transaction.
+- A message must have a past-tense money verb *and* account/card/UPI evidence to escape the promo
+  filter, which keeps "get ₹500 cashback credited" offers out.
+
+### D10. Everything that is not clearly parsed goes to the Review inbox
+- Missing amount or direction → `needs_review`. Nothing posted to the webhook or matched by the
+  email filter is ever dropped.
+
+### D11. Dedupe rules
+1. Same normalised reference (UPI RRN/UTR/txn id) + same amount + direction → duplicate (any time
+   apart).
+2. If *both* sides have a 12-digit UPI RRN and they differ → **not** a duplicate, even within the
+   time window (two ₹20 chais 3 minutes apart are two payments).
+3. Otherwise same amount + direction + compatible account (last digits match or one unknown) +
+   occurred within **±10 minutes** → duplicate.
+- References in other formats (PhonePe `T26…` ids, SBI ATM 4-digit numbers) don't block rule 3,
+  because SMS and app receipts often carry different id types for the same payment.
+- Also: the *same message text* within ±1 hour (Shortcut retry, or an SMS also forwarded by email)
+  is recorded as `duplicate/same_message`, and an email Message-ID is processed only once.
+- Duplicates enrich the existing transaction (fill missing ref, balance, account, payee).
+- Concurrency: ingestion takes a Postgres advisory lock, so an SMS and its email arriving in the
+  same second can't both create a transaction.
+- **Known gap:** a bank email that arrives >10 minutes after a card SMS *without* any reference
+  will create a second transaction. Widen `DEDUPE_WINDOW_MS` in `src/lib/dedupe.ts` if this happens.
+
+### D12. Non-salary credits ("credit kind")
+Every credit gets a `creditKind` that decides how it affects the budget:
+
+| Kind | Detected when | Budget effect |
+| --- | --- | --- |
+| `salary` | text says salary/SAL/payroll, **or** amount within 2% of my configured salary, **or** 60–160% of salary via NEFT/IMPS/RTGS within ±4 days of the salary day | none (the budget already comes from the salary setting) |
+| `refund` | refund / reversal / cashback / chargeback, or a credit from a known merchant (e.g. `swiggy.refunds@…`) | **offsets spending** (reduces net spend, filed under the merchant's category) |
+| `reimbursement` | person-to-person UPI credits (VPA that looks like a name, Axis `P2A`, …) | **offsets spending** — friends paying back their share of a bill |
+| `income` | interest, dividends, unknown NEFT/IMPS credits, anything else | ignored by the daily budget |
+
+- **Why:** refunds and split-bill paybacks undo money that was already counted as spent, so
+  counting them makes "safe to spend" honest. Unknown big credits (a freelance payment, a gift)
+  should *not* silently inflate daily spending money — that's a decision for me to make.
+- **Change it:** tap a credit → "How should this credit count?" in the UI, or change the rules in
+  `classifyCredit()` (`src/lib/classify.ts`).
+
+### D13. Exclusions from the budget (auto-detected)
+- **Credit-card bill payments** (bank debit "towards … credit card", CRED, BillDesk card payments,
+  and the card's "payment received" credit) are excluded — card spends were already counted when
+  swiped; counting the bill again would double-count.
+- **Self-transfers**: payee matches one of my names/VPAs (Settings → "That's me"), a beneficiary
+  "A/c XX1234" that is one of my accounts, the word "self", or an automatic **pair**: a debit on
+  one account and a credit of the same amount on another account within 30 minutes (IMPS/NEFT/UPI,
+  not card spends or merchant refunds). Both halves are excluded and linked.
+- **Fixed commitments**: a debit within ±10% of a commitment's amount whose text contains one of its
+  keywords (e.g. SIP ₹5,000 with keyword `zerodha`) is excluded — it was already subtracted from the
+  monthly budget.
+- I can always toggle "Exclude from budget" on any transaction; un-excluding one half of a detected
+  pair releases both.
+
+### D14. Categorisation
+- Precedence: card-bill/self-transfer → my learned rules → ATM = Cash / salary / income → keyword map
+  (longest keyword wins, so "Swiggy Instamart" is Groceries but "Swiggy" is Food) → person-to-person
+  = "Sent to people" → Other.
+- Re-categorising in the UI with "Remember for <merchant>" (on by default) saves a rule keyed on the
+  normalised merchant name and re-files past auto-categorised transactions from that merchant (not
+  ones I set by hand). A rule key also matches longer names that start with it
+  (`amazonpay` → `amazonpayindia`).
+
+### D15. Webhook auth and payload
+- `POST /api/ingest/sms` requires `Authorization: Bearer $INGEST_TOKEN` (constant-time compare).
+  The token is never accepted in the query string (it would end up in logs).
+- Payload `{ text, sender?, receivedAt? }`; aliases (`message`, `body`, `from`, `date`) and a
+  plain-text body are accepted because Shortcuts are hand-built. `receivedAt` can be omitted — the
+  automation runs the instant the SMS arrives, so server time is accurate; ISO, epoch and the
+  default Shortcuts date formats are understood.
