@@ -56,7 +56,7 @@ Newest entries are appended at the bottom of each section.
 - **Chose:** `src/lib/parser/formats.ts` holds one named-group regex per known alert layout (HDFC,
   ICICI, SBI, Axis, Kotak, Paytm, PhonePe, GPay — SMS and email). When no template matches,
   bank-agnostic extractors in `generic.ts` try each field on their own. Fixtures in `fixtures.ts`
-  (49 samples) each have a test.
+  (52 samples) each have a test.
 - **Why:** templates give exact, predictable results for the formats I actually receive; the generic
   layer means a slightly changed bank format still usually parses instead of falling to review.
 - **Change it:** to support a new format, paste the alert into `fixtures.ts` with the expected

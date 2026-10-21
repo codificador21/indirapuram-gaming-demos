@@ -25,14 +25,14 @@ Send a fake bank SMS to the local webhook (what the iPhone does):
 
 ```bash
 npm run ingest:sample                    # random sample SMS → http://localhost:3000
-npm run ingest:sample -- --list          # see all 49 sample messages
+npm run ingest:sample -- --list          # see all 52 sample messages
 ```
 
 ## What's inside
 
 | Path | What |
 | --- | --- |
-| `src/lib/parser/` | Bank SMS/email parser: noise filter, per-bank templates (`formats.ts`), generic extractors, 49 fixtures (`fixtures.ts`) |
+| `src/lib/parser/` | Bank SMS/email parser: noise filter, per-bank templates (`formats.ts`), generic extractors, 52 fixtures (`fixtures.ts`) |
 | `src/lib/ingest/pipeline.ts` | One pipeline for webhook, email and seed: store raw → parse → dedupe → classify → save |
 | `src/lib/dedupe.ts` | UPI ref first, then amount + direction + account ± 10 min |
 | `src/lib/categorise.ts` | Keyword map + learned per-merchant rules |

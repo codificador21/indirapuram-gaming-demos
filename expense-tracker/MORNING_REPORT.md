@@ -32,7 +32,7 @@ Screenshots (iPhone size): [home](docs/screenshots/home-dark.png) ·
   GPay, across SMS and email. A generic fallback handles unseen variants.
 - It extracts amount, debit/credit, merchant (cleaned from VPAs like `swiggy.upi@axisbank` → Swiggy),
   account last-4, UPI ref/UTR, IST date-time and balance.
-- 49 fixtures, one test each.
+- 52 fixtures, one test each.
 - OTPs, promos, payment-due/statement/"will be debited" reminders, declined transactions and collect
   requests are ignored but still stored under Review → Ignored. Anything unreadable goes to the
   **Review inbox**, where one tap turns it into a transaction. "Re-check with latest parser"
