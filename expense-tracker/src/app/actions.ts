@@ -275,3 +275,15 @@ export async function pollEmailNowAction(): Promise<ActionState> {
     return { ok: false, error: `Email check failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
+
+export async function reprocessReviewAction(): Promise<ActionState> {
+  await requireSession();
+  const { reprocessMessages } = await import('@/lib/ingest/pipeline');
+  const { reviewItems } = await import('@/lib/queries');
+  const db = getDb();
+  const items = await reviewItems(db, ['needs_review', 'ignored'], 500);
+  const s = await reprocessMessages(db, items.map((i) => i.id));
+  refreshAll();
+  const parts = [s.created && `${s.created} new`, s.duplicates && `${s.duplicates} already recorded`].filter(Boolean);
+  return { ok: true, message: parts.length ? `Re-checked ${s.checked}: ${parts.join(', ')}` : `Re-checked ${s.checked} — no change` };
+}

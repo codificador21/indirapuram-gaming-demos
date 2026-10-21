@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useState, useTransition, type ReactNode } from 'react';
-import { dismissReviewAction, resolveReviewAction, type ActionState } from '@/app/actions';
+import { dismissReviewAction, reprocessReviewAction, resolveReviewAction, type ActionState } from '@/app/actions';
 import { CategoryPicker } from '@/components/category-picker';
 import { MailIcon, MessageIcon } from '@/components/icons';
 import { Sheet } from '@/components/sheet';
@@ -49,30 +49,59 @@ const STATUS_STYLE: Record<string, string> = {
   dismissed: 'bg-surface-3 text-muted',
 };
 
-export function ReviewList({ items, categories, tz, mode, empty }: { items: ReviewItem[]; categories: Category[]; tz: string; mode: 'review' | 'ignored' | 'all'; empty: ReactNode }) {
+export function ReviewList({
+  items,
+  categories,
+  tz,
+  nowIso,
+  mode,
+  empty,
+}: {
+  items: ReviewItem[];
+  categories: Category[];
+  tz: string;
+  nowIso: string;
+  mode: 'review' | 'ignored' | 'all';
+  empty: ReactNode;
+}) {
   const [creating, setCreating] = useState<ReviewItem | null>(null);
   const [pending, start] = useTransition();
-  const now = new Date();
+  const now = new Date(nowIso);
 
   if (items.length === 0) return <>{empty}</>;
   return (
     <>
-      {mode === 'review' && items.length > 1 && (
-        <div className="mb-3 flex justify-end">
+      {mode !== 'all' && (
+        <div className="mb-3 flex justify-end gap-1">
           <button
             type="button"
             className={buttonClass.ghost}
             disabled={pending}
-            onClick={() => {
-              if (!confirm(`Dismiss all ${items.length} messages?`)) return;
+            onClick={() =>
               start(async () => {
-                await dismissReviewAction(items.map((i) => i.id));
-                toast('Dismissed');
-              });
-            }}
+                const res = await reprocessReviewAction();
+                toast(res?.ok ? (res.message ?? 'Done') : (res?.error ?? 'Failed'), res?.ok ? 'ok' : 'error');
+              })
+            }
           >
-            Dismiss all
+            Re-check with latest parser
           </button>
+          {mode === 'review' && items.length > 1 && (
+            <button
+              type="button"
+              className={buttonClass.ghost}
+              disabled={pending}
+              onClick={() => {
+                if (!confirm(`Dismiss all ${items.length} messages?`)) return;
+                start(async () => {
+                  await dismissReviewAction(items.map((i) => i.id));
+                  toast('Dismissed');
+                });
+              }}
+            >
+              Dismiss all
+            </button>
+          )}
         </div>
       )}
       <ul className={`space-y-3 ${pending ? 'opacity-60' : ''}`}>

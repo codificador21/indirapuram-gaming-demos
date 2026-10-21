@@ -96,6 +96,85 @@ export async function pairSelfTransfer(db: DbOrTx, txn: Transaction): Promise<nu
   return match.id;
 }
 
+type Resolved = { kind: 'duplicate'; transaction: Transaction; reason: DuplicateReason } | { kind: 'created'; transaction: Transaction };
+
+/** Dedupe a parsed transaction against existing ones; enrich the match, or insert a new row (+ self-transfer pairing). */
+async function resolveTransaction(tx: DbOrTx, parsed: ParsedTransaction, source: MessageSource, body: string): Promise<Resolved> {
+  const ref = normaliseRef(parsed.reference);
+  const p = { ...parsed, reference: ref };
+  const nearby = await tx
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.direction, p.direction),
+        eq(transactions.amountPaise, p.amountPaise),
+        or(
+          ref ? eq(transactions.reference, ref) : sql`false`,
+          and(
+            gte(transactions.occurredAt, new Date(p.occurredAt.getTime() - DEDUPE_WINDOW_MS)),
+            lte(transactions.occurredAt, new Date(p.occurredAt.getTime() + DEDUPE_WINDOW_MS)),
+          ),
+        ),
+      ),
+    );
+  const dup = findDuplicate(p, nearby.map((t) => ({ ...t, reference: normaliseRef(t.reference) })));
+  if (dup) {
+    const existing = nearby.find((t) => t.id === (dup.match as Transaction).id)!;
+    await enrichExisting(tx, existing, p);
+    return { kind: 'duplicate', transaction: existing, reason: dup.reason };
+  }
+  const ctx = await loadIngestContext(tx);
+  const [created] = await tx.insert(transactions).values(buildTransaction(p, ctx, source, body)).returning();
+  const pairedWith = await pairSelfTransfer(tx, created!);
+  const transaction = pairedWith ? (await tx.select().from(transactions).where(eq(transactions.id, created!.id)))[0]! : created!;
+  return { kind: 'created', transaction };
+}
+
+export interface ReprocessSummary {
+  checked: number;
+  created: number;
+  duplicates: number;
+  unchanged: number;
+}
+
+/**
+ * Re-runs the current parser over messages in the Review inbox / Ignored list (e.g. after adding a
+ * bank format). Messages that now parse become transactions (or link to an existing duplicate).
+ */
+export async function reprocessMessages(db: Db, rawMessageIds: number[]): Promise<ReprocessSummary> {
+  const summary: ReprocessSummary = { checked: 0, created: 0, duplicates: 0, unchanged: 0 };
+  const tz = appTimezone();
+  for (const id of rawMessageIds) {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${INGEST_LOCK_KEY})`);
+      const [raw] = await tx.select().from(rawMessages).where(eq(rawMessages.id, id));
+      if (!raw || (raw.status !== 'needs_review' && raw.status !== 'ignored')) return;
+      summary.checked += 1;
+      const result = parseMessage({ text: raw.body, sender: raw.sender, subject: raw.subject, receivedAt: raw.receivedAt, source: raw.source }, { timezone: tz });
+      if (result.status !== 'transaction') {
+        const status = result.status === 'ignored' ? 'ignored' : 'needs_review';
+        await tx.update(rawMessages).set({ status, statusReason: result.reason, parsed: snapshot(result) }).where(eq(rawMessages.id, id));
+        summary.unchanged += 1;
+        return;
+      }
+      const resolved = await resolveTransaction(tx, result.txn, raw.source, raw.body);
+      await tx
+        .update(rawMessages)
+        .set({
+          status: resolved.kind === 'created' ? 'parsed' : 'duplicate',
+          statusReason: resolved.kind === 'created' ? result.parser : `duplicate_${resolved.reason}`,
+          parsed: snapshot(result),
+          transactionId: resolved.transaction.id,
+        })
+        .where(eq(rawMessages.id, id));
+      if (resolved.kind === 'created') summary.created += 1;
+      else summary.duplicates += 1;
+    });
+  }
+  return summary;
+}
+
 export async function ingestMessage(db: Db, input: IngestInput): Promise<IngestOutcome> {
   const hash = contentHash(input.body);
   const tz = appTimezone();
@@ -155,48 +234,19 @@ export async function ingestMessage(db: Db, input: IngestInput): Promise<IngestO
       return { status, rawMessageId: row!.id, reason: result.reason };
     }
 
-    const p = result.txn;
-
-    // 4. Dedupe against existing transactions.
-    const ref = normaliseRef(p.reference);
-    const nearby = await tx
-      .select()
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.direction, p.direction),
-          eq(transactions.amountPaise, p.amountPaise),
-          or(
-            ref ? eq(transactions.reference, ref) : sql`false`,
-            and(
-              gte(transactions.occurredAt, new Date(p.occurredAt.getTime() - DEDUPE_WINDOW_MS)),
-              lte(transactions.occurredAt, new Date(p.occurredAt.getTime() + DEDUPE_WINDOW_MS)),
-            ),
-          ),
-        ),
-      );
-    const dup = findDuplicate({ ...p, reference: ref }, nearby.map((t) => ({ ...t, reference: normaliseRef(t.reference) })));
-    if (dup) {
-      const existing = nearby.find((t) => t.id === (dup.match as Transaction).id)!;
-      await enrichExisting(tx, existing, { ...p, reference: ref });
+    const resolved = await resolveTransaction(tx, result.txn, input.source, input.body);
+    if (resolved.kind === 'duplicate') {
       const [row] = await tx
         .insert(rawMessages)
-        .values({ ...base, status: 'duplicate', statusReason: `duplicate_${dup.reason}`, parsed: snapshot(result), transactionId: existing.id })
+        .values({ ...base, status: 'duplicate', statusReason: `duplicate_${resolved.reason}`, parsed: snapshot(result), transactionId: resolved.transaction.id })
         .returning({ id: rawMessages.id });
-      return { status: 'duplicate', rawMessageId: row!.id, transactionId: existing.id, reason: dup.reason };
+      return { status: 'duplicate', rawMessageId: row!.id, transactionId: resolved.transaction.id, reason: resolved.reason };
     }
-
-    // 5. New transaction.
-    const ctx = await loadIngestContext(tx);
-    const values = buildTransaction({ ...p, reference: ref }, ctx, input.source, input.body);
-    const [created] = await tx.insert(transactions).values(values).returning();
     const [row] = await tx
       .insert(rawMessages)
-      .values({ ...base, status: 'parsed', statusReason: result.parser, parsed: snapshot(result), transactionId: created!.id })
+      .values({ ...base, status: 'parsed', statusReason: result.parser, parsed: snapshot(result), transactionId: resolved.transaction.id })
       .returning({ id: rawMessages.id });
-
-    const pairedWith = await pairSelfTransfer(tx, created!);
-    const transaction = pairedWith ? (await tx.select().from(transactions).where(eq(transactions.id, created!.id)))[0]! : created!;
+    const transaction = resolved.transaction;
     return { status: 'created', rawMessageId: row!.id, transaction };
   });
 }

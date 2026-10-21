@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { formatINR } from '@/lib/money';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <section className={`rounded-3xl bg-surface p-4 ring-1 ring-line ${className}`}>{children}</section>;
@@ -32,12 +31,6 @@ export function SectionTitle({ children, right }: { children: ReactNode; right?:
   );
 }
 
-/** Amount with sign and colour by direction: debits in ink, credits in green with a + sign. */
-export function Amount({ paise, direction, muted = false, className = '' }: { paise: number; direction: 'debit' | 'credit'; muted?: boolean; className?: string }) {
-  const tone = muted ? 'text-muted line-through decoration-1' : direction === 'credit' ? 'text-good-ink' : 'text-ink';
-  return <span className={`tnum font-semibold ${tone} ${className}`}>{direction === 'credit' ? '+' : ''}{formatINR(paise)}</span>;
-}
-
 export function EmptyState({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex flex-col items-center px-6 py-12 text-center">
@@ -60,6 +53,3 @@ export const inputClass =
 
 export const labelClass = 'mb-1.5 block px-1 text-[13px] font-medium text-ink-2';
 
-export function Rupees({ paise, className = '' }: { paise: number; className?: string }) {
-  return <span className={className}>{formatINR(paise, { decimals: 0 })}</span>;
-}

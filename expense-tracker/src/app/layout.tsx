@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Toaster } from '@/components/toaster';
 import { ServiceWorker } from '@/components/service-worker';
-import { APP_NAME, THEME_COLORS, THEME_COOKIE, type Theme } from '@/lib/theme';
+import { APP_NAME, THEME_COLORS } from '@/lib/theme';
+import { currentTheme } from '@/lib/theme-server';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -21,11 +21,6 @@ export const metadata: Metadata = {
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
 };
-
-async function currentTheme(): Promise<Theme> {
-  const store = await cookies();
-  return store.get(THEME_COOKIE)?.value === 'light' ? 'light' : 'dark';
-}
 
 export async function generateViewport(): Promise<Viewport> {
   return {

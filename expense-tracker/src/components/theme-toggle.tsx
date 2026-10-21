@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { MoonIcon, SunIcon } from './icons';
 import { THEME_COLORS, THEME_COOKIE, type Theme } from '@/lib/theme';
 
@@ -10,12 +10,8 @@ export function applyTheme(theme: Theme) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[theme]);
 }
 
-export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
-  const [theme, setTheme] = useState<Theme>('dark');
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- read the server-rendered theme once on mount
-    setTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
-  }, []);
+export function ThemeToggle({ initial, withLabel = false }: { initial: Theme; withLabel?: boolean }) {
+  const [theme, setTheme] = useState<Theme>(initial);
   const next: Theme = theme === 'dark' ? 'light' : 'dark';
   return (
     <button

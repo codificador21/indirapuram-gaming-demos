@@ -76,6 +76,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
         items={items}
         categories={categories}
         tz={tz}
+        nowIso={new Date().toISOString()}
         mode={current.id as 'review' | 'ignored' | 'all'}
         empty={
           <Card>

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '@/db';
 import { fixedCommitments, merchantRules, rawMessages, settings, transactions } from '@/db/schema';
-import { ingestMessage, type IngestInput } from '@/lib/ingest/pipeline';
+import { contentHash, ingestMessage, reprocessMessages, type IngestInput } from '@/lib/ingest/pipeline';
 import { fixtureById } from '@/lib/parser/fixtures';
 import { createTransaction, deleteTransaction, dismissReview, resolveReview, updateTransaction } from '@/lib/transactions';
 import { databaseAvailable, resetTestDb, setupTestDb } from './helpers/db';
@@ -190,5 +190,29 @@ describe.skipIf(!available)('ingest pipeline (Postgres)', () => {
     expect(await txnCount()).toBe(0);
     const [raw] = await db.select().from(rawMessages);
     expect(raw!.status).toBe('dismissed');
+  });
+
+  it('re-checks review/ignored messages with the current parser', async () => {
+    // Simulate messages stored by an older parser that couldn't read them.
+    const readable = fixtureById('axis-upi-debit-sms');
+    const [stale] = await db
+      .insert(rawMessages)
+      .values({ source: 'sms', via: 'test', sender: readable.sender, body: readable.text, receivedAt: new Date(readable.receivedAt), contentHash: contentHash(readable.text), status: 'needs_review', statusReason: 'no_amount' })
+      .returning();
+    const otp = await ingestMessage(db, fromFixture('hdfc-otp-sms'));
+    const already = await ingestMessage(db, fromFixture('icici-upi-debit-sms'));
+    const icici = fixtureById('icici-upi-debit-sms');
+    const [dupe] = await db
+      .insert(rawMessages)
+      .values({ source: 'sms', via: 'test', sender: icici.sender, body: icici.text + ' ', receivedAt: new Date(icici.receivedAt), contentHash: 'x', status: 'needs_review' })
+      .returning();
+
+    const summary = await reprocessMessages(db, [stale!.id, otp.rawMessageId!, dupe!.id]);
+    expect(summary).toEqual({ checked: 3, created: 1, duplicates: 1, unchanged: 1 });
+    const [after] = await db.select().from(rawMessages).where(eq(rawMessages.id, stale!.id));
+    expect(after).toMatchObject({ status: 'parsed', statusReason: 'axis.upi.debit' });
+    const [dupAfter] = await db.select().from(rawMessages).where(eq(rawMessages.id, dupe!.id));
+    expect(dupAfter!.transactionId).toBe(already.status === 'created' ? already.transaction.id : -1);
+    expect(await txnCount()).toBe(2);
   });
 });

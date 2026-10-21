@@ -8,13 +8,14 @@ import { buttonClass, Card, EmptyState, SectionTitle } from '@/components/ui';
 import { appTimezone } from '@/lib/env';
 import { formatINR } from '@/lib/money';
 import { getBudget, getCategories, recentTransactions, reviewCount } from '@/lib/queries';
+import { currentTheme } from '@/lib/theme-server';
 import { localParts, monthName } from '@/lib/time';
 
 export default async function HomePage() {
   const db = getDb();
   const tz = appTimezone();
   const now = new Date();
-  const [{ summary: b }, recent, categories, pending] = await Promise.all([getBudget(db, { now }), recentTransactions(db, 6), getCategories(db), reviewCount(db)]);
+  const [{ summary: b }, recent, categories, pending, theme] = await Promise.all([getBudget(db, { now }), recentTransactions(db, 6), getCategories(db), reviewCount(db), currentTheme()]);
 
   const p = localParts(now, tz);
   const greeting = p.hour < 5 ? 'Up late' : p.hour < 12 ? 'Good morning' : p.hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -30,7 +31,7 @@ export default async function HomePage() {
           <h1 className="text-[26px] leading-tight font-bold tracking-tight">{greeting}</h1>
         </div>
         <div className="flex items-center">
-          <ThemeToggle />
+          <ThemeToggle initial={theme} />
           <Link href="/settings" className="rounded-full p-2 text-ink-2 hover:bg-surface-2" aria-label="Settings">
             <SettingsIcon size={21} />
           </Link>

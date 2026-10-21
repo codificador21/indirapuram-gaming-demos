@@ -52,7 +52,7 @@ npm run ingest:sample -- --list          # see all 49 sample messages
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run check` | typecheck + lint + tests (run before every commit) |
-| `npm test` | Vitest — unit tests always; DB/IMAP integration tests when Postgres is reachable at `TEST_DATABASE_URL` (default `postgres://expense:expense@localhost:5432/expense_test`, create it with `createdb -h localhost -U expense expense_test`) |
+| `npm test` | Vitest — unit tests always; DB/IMAP integration tests when Postgres is reachable at `TEST_DATABASE_URL` (default `postgres://expense:expense@localhost:5432/expense_test` — docker-compose creates it) |
 | `npm run db:migrate` | Apply migrations + default categories (safe to re-run) |
 | `npm run db:generate` | After editing `src/db/schema.ts`: write a new SQL migration |
 | `npm run db:seed` / `db:reset` | Demo data (reset **wipes** transactions first) |

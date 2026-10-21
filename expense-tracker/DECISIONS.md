@@ -225,3 +225,25 @@ Every credit gets a `creditKind` that decides how it affects the budget:
   twice either way.
 - Tested end-to-end against an in-memory IMAP server (`hoodiecrow-imap`) in
   `tests/email-poller.integration.test.ts`.
+
+## Later additions
+
+### D26. "Re-check with latest parser"
+- Review → *Re-check with latest parser* re-runs the current parser over everything in Needs review
+  and Ignored. Anything that now parses goes through the same dedupe/classification as new
+  messages (so it links to an existing transaction instead of double counting).
+- Workflow when a bank changes its SMS format: add a fixture + template, deploy, tap Re-check.
+
+### D27. Category "People"
+- Person-to-person payments (both directions) live in one category called **People** (id
+  `transfers`). Paybacks from friends land there too and offset spending (see D12).
+
+### D28. Seed and fixture data are fictional
+- Names (Aarav Mehta, Rahul Sharma…), account numbers, VPAs and UPI references in fixtures and the
+  seed are made up. The seed refuses to run on a database that already has transactions unless you
+  use `npm run db:reset`, which wipes transactions, messages, rules, commitments and accounts.
+
+### D29. No `output: 'standalone'`
+- Railway runs `npm start` (`next start`), which doesn't work with standalone output. If you move to
+  a Docker image later, add `output: 'standalone'` back in `next.config.ts` and run
+  `node .next/standalone/server.js`.

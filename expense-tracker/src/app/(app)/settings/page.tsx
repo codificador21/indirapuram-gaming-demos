@@ -10,6 +10,7 @@ import { formatINR } from '@/lib/money';
 import { categoryLookup, getAppState, getCategories, getSettingsBundle, ingestStats } from '@/lib/queries';
 import { AccountForm, BudgetForm, CommitmentForm, CopyField, DeleteButton, PollNowButton, SignOutButton, ToggleCommitment } from './settings-forms';
 import type { PollerState } from '@/lib/email/poller-state';
+import { currentTheme } from '@/lib/theme-server';
 
 export const metadata: Metadata = { title: 'Settings' };
 
@@ -155,7 +156,7 @@ export default async function SettingsPage() {
 
       <SectionTitle>Appearance</SectionTitle>
       <Card className="!py-2">
-        <ThemeToggle withLabel />
+        <ThemeToggle initial={await currentTheme()} withLabel />
       </Card>
 
       <div className="mt-6">
