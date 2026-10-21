@@ -31,8 +31,15 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const { from, to } = periodRange(period, tz);
   const kind = sp.kind === 'credit' || sp.kind === 'excluded' || sp.kind === 'debit' ? sp.kind : 'all';
 
-  const [all, categories] = await Promise.all([listTransactions(db, { from, to, limit: 2000 }), getCategories(db)]);
-  const filtered = await (sp.cat || sp.q || kind !== 'all' ? listTransactions(db, { from, to, categoryId: sp.cat, q: sp.q, kind, limit: 2000 }) : Promise.resolve(all));
+  const [all, categories] = await Promise.all([listTransactions(db, { from, to, limit: 5000 }), getCategories(db)]);
+  // One query for the period; filters are applied in memory (a month is a few hundred rows).
+  const q = sp.q?.trim().toLowerCase();
+  const filtered = all.filter(
+    (t) =>
+      (!sp.cat || t.categoryId === sp.cat) &&
+      (kind === 'all' || (kind === 'excluded' ? t.excludeFromBudget : t.direction === kind)) &&
+      (!q || [t.merchant, t.payee, t.notes].some((v) => v?.toLowerCase().includes(q))),
+  );
 
   const cat = categoryLookup(categories);
   const totals = categoryTotals(all, period, tz);

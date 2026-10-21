@@ -4,11 +4,11 @@ import { getDb } from '@/db';
 import { CumulativeChart, DailyChart } from '@/components/charts';
 import { ChevronLeft, ChevronRight } from '@/components/icons';
 import { Card, EmptyState, PageHeader, SectionTitle } from '@/components/ui';
-import { categoryTotals, computeBudget, getPeriod, netSpendEffect, shiftPeriod } from '@/lib/budget';
+import { categoryTotals, netSpendEffect, shiftPeriod } from '@/lib/budget';
 import { appTimezone } from '@/lib/env';
 import { txnTitle } from '@/lib/format';
 import { formatINR } from '@/lib/money';
-import { categoryLookup, getCategories, getSettingsBundle, periodRange, transactionsBetween } from '@/lib/queries';
+import { categoryLookup, getBudget, getCategories } from '@/lib/queries';
 import { localDayKey } from '@/lib/time';
 
 export const metadata: Metadata = { title: 'Insights' };
@@ -21,11 +21,9 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const tz = appTimezone();
   const now = new Date();
   const today = localDayKey(now, tz);
-  const [{ budgetSettings }, categories] = await Promise.all([getSettingsBundle(db), getCategories(db)]);
-  const period = getPeriod(sp.p && /^\d{4}-\d{2}-\d{2}$/.test(sp.p) ? sp.p : today, budgetSettings);
-  const { from, to } = periodRange(period, tz);
-  const txns = await transactionsBetween(db, from, to);
-  const b = computeBudget(txns, budgetSettings, now, tz, period);
+  const dayKey = sp.p && /^\d{4}-\d{2}-\d{2}$/.test(sp.p) ? sp.p : today;
+  const [{ summary: b, txns, period, bundle }, categories] = await Promise.all([getBudget(db, { dayKey, now }), getCategories(db)]);
+  const { budgetSettings } = bundle;
   const totals = categoryTotals(txns, period, tz);
   const cat = categoryLookup(categories);
   const isCurrent = period.start <= today && today <= period.end;

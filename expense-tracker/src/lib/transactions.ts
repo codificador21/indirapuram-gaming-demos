@@ -2,7 +2,7 @@
  * Transaction service: manual entry, edits, re-categorisation (learned rules) and Review inbox actions.
  * Server actions call these; they take a Db so they are testable against a test database.
  */
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '@/db';
 import { merchantRules, rawMessages, transactions, type Transaction } from '@/db/schema';
 import { categorise } from './categorise';
@@ -10,6 +10,9 @@ import { classifyCredit, detectExclusion } from './classify';
 import type { Channel, CreditKind, Direction, TxnSource } from './domain';
 import { loadIngestContext } from './ingest/context';
 import { cleanMerchant, merchantKey } from './parser/merchant';
+
+/** When an auto-detected self-transfer is released, file it with people payments instead (unless I set it). */
+const releasedCategory = sql`case when ${transactions.categorySource} = 'manual' then ${transactions.categoryId} else 'transfers' end`;
 
 export interface ManualTransactionInput {
   amountPaise: number;
@@ -107,12 +110,15 @@ export async function updateTransaction(db: Db, id: number, patch: TransactionPa
     if (patch.excludeFromBudget !== undefined && patch.excludeFromBudget !== current.excludeFromBudget) {
       set.excludeFromBudget = patch.excludeFromBudget;
       set.excludeReason = patch.excludeFromBudget ? 'manual' : null;
+      if (!patch.excludeFromBudget && current.excludeReason === 'self_transfer' && current.categoryId === 'self_transfer' && patch.categoryId === undefined && current.categorySource !== 'manual') {
+        set.categoryId = 'transfers';
+      }
       if (!patch.excludeFromBudget && current.transferPairId) {
         // Breaking an auto-detected self-transfer: release the other half too.
         set.transferPairId = null;
         await tx
           .update(transactions)
-          .set({ transferPairId: null, excludeFromBudget: false, excludeReason: null })
+          .set({ transferPairId: null, excludeFromBudget: false, excludeReason: null, categoryId: releasedCategory })
           .where(and(eq(transactions.id, current.transferPairId), eq(transactions.excludeReason, 'self_transfer')));
       }
     }
@@ -144,18 +150,29 @@ export async function deleteTransaction(db: Db, id: number) {
     const [current] = await tx.select().from(transactions).where(eq(transactions.id, id));
     if (!current) return;
     if (current.transferPairId) {
-      await tx.update(transactions).set({ transferPairId: null, excludeFromBudget: false, excludeReason: null }).where(eq(transactions.id, current.transferPairId));
+      await tx
+        .update(transactions)
+        .set({ transferPairId: null, excludeFromBudget: false, excludeReason: null, categoryId: releasedCategory })
+        .where(eq(transactions.id, current.transferPairId));
     }
     await tx.update(rawMessages).set({ status: 'dismissed', statusReason: 'transaction_deleted' }).where(eq(rawMessages.transactionId, id));
     await tx.delete(transactions).where(eq(transactions.id, id));
   });
 }
 
-/** Review inbox: create a transaction from an unparsed/ignored message. */
+export class ReviewConflictError extends Error {}
+
+/**
+ * Review inbox: create a transaction from an unparsed / ignored message, or from one wrongly treated
+ * as a duplicate ("not a duplicate"). Refuses messages that already produced a transaction.
+ */
 export async function resolveReview(db: Db, rawMessageId: number, input: ManualTransactionInput): Promise<Transaction> {
   return db.transaction(async (tx) => {
-    const [raw] = await tx.select().from(rawMessages).where(eq(rawMessages.id, rawMessageId));
+    // Lock the row so a double-tap can't create two transactions from one message.
+    const [raw] = await tx.select().from(rawMessages).where(eq(rawMessages.id, rawMessageId)).for('update');
     if (!raw) throw new Error(`Message ${rawMessageId} not found`);
+    const allowed = raw.status === 'needs_review' || raw.status === 'ignored' || raw.status === 'duplicate' || (raw.status === 'dismissed' && !raw.transactionId);
+    if (!allowed) throw new ReviewConflictError('This message already has a transaction');
     const txn = await createTransaction(tx, { ...input, channel: input.channel ?? 'other' }, raw.source);
     await tx.update(rawMessages).set({ status: 'resolved', transactionId: txn.id }).where(eq(rawMessages.id, rawMessageId));
     return txn;

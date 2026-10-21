@@ -126,7 +126,7 @@ export function ReviewList({
                   {item.reason && REASONS[item.reason] ? ` · ${REASONS[item.reason]}` : item.status === 'parsed' && item.reason ? ` · ${item.reason}` : ''}
                 </span>
               </div>
-              {(item.status === 'needs_review' || item.status === 'ignored' || item.status === 'dismissed') && (
+              {(item.status === 'needs_review' || item.status === 'ignored' || (item.status === 'dismissed' && !item.transactionId) || item.status === 'duplicate') && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-line pt-3">
                   {item.status === 'needs_review' && (
                     <button
@@ -142,8 +142,12 @@ export function ReviewList({
                       Dismiss
                     </button>
                   )}
-                  <button type="button" className="rounded-full bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-on-accent" onClick={() => setCreating(item)}>
-                    Create transaction
+                  <button
+                    type="button"
+                    className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${item.status === 'duplicate' ? 'text-accent-ink ring-1 ring-line' : 'bg-accent text-on-accent'}`}
+                    onClick={() => setCreating(item)}
+                  >
+                    {item.status === 'duplicate' ? 'Not a duplicate? Add it' : 'Create transaction'}
                   </button>
                 </div>
               )}

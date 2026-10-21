@@ -80,11 +80,16 @@ Newest entries are appended at the bottom of each section.
 2. If *both* sides have a 12-digit UPI RRN and they differ → **not** a duplicate, even within the
    time window (two ₹20 chais 3 minutes apart are two payments).
 3. Otherwise same amount + direction + compatible account (last digits match or one unknown) +
-   occurred within **±10 minutes** → duplicate.
+   occurred within **±10 minutes** + arrived through a **different source** (SMS vs email vs a
+   manual entry) → duplicate. Banks send one SMS per payment, so two *different* SMS with the same
+   amount minutes apart are two payments, not one.
 - References in other formats (PhonePe `T26…` ids, SBI ATM 4-digit numbers) don't block rule 3,
   because SMS and app receipts often carry different id types for the same payment.
-- Also: the *same message text* within ±1 hour (Shortcut retry, or an SMS also forwarded by email)
-  is recorded as `duplicate/same_message`, and an email Message-ID is processed only once.
+- Also: the *same message text* within ±15 minutes (Shortcut retry, several keyword automations
+  firing, or an SMS also forwarded by email) is recorded as `duplicate/same_message`, and an email
+  Message-ID is processed only once.
+- Every duplicate is still listed under Review → All messages with a **"Not a duplicate? Add it"**
+  button, for the rare case where two genuinely separate payments looked identical.
 - Duplicates enrich the existing transaction (fill missing ref, balance, account, payee).
 - Concurrency: ingestion takes a Postgres advisory lock, so an SMS and its email arriving in the
   same second can't both create a transaction.
@@ -207,8 +212,10 @@ Every credit gets a `creditKind` that decides how it affects the budget:
 ### D24. Auth
 - One password (`APP_PASSWORD`) → 30-day HS256 JWT in an httpOnly, SameSite=Lax cookie (Secure in
   production). `src/proxy.ts` gates every page; every server action re-checks the session.
-- 8 wrong passwords within 15 minutes locks login for the rest of that window (in-memory, per
-  instance — fine for one user on one instance).
+- 8 wrong passwords within 15 minutes from one IP locks login *for that IP* for the rest of the
+  window (in-memory, single instance). Per-IP so a stranger can't lock me out. The IP is the
+  right-most `X-Forwarded-For` entry (added by the host's proxy; left-most entries can be forged).
+- After login, `?next=` only accepts same-site paths (`/x`, not `//host` or `/\host`).
 
 ## Email
 
@@ -219,11 +226,14 @@ Every credit gets a `creditKind` that decides how it affects the budget:
 - Alternatives for hosts without a worker: `npm run poll:once` (cron job) or
   `POST /api/cron/poll-email` with the ingest token (any external cron), or Settings → "Check email
   now".
-- Only **unseen** mail from the last `IMAP_LOOKBACK_DAYS` is considered. For each message only the
-  envelope is read first; mail that isn't from a known bank/UPI sender (or tagged
-  `IMAP_SUBJECT_TAG`) is never downloaded or flagged. Processed mail is marked `\Seen`
-  (`IMAP_MARK_SEEN=false` to leave it unread); the Message-ID is stored so it is never ingested
-  twice either way.
+- **Deviation from the brief:** the brief said "process only unseen messages". I look at *all* mail
+  from the last `IMAP_LOOKBACK_DAYS` (default 3) and skip Message-IDs already ingested, because an
+  alert I open on my phone before the next poll would otherwise be lost forever. Set
+  `IMAP_ONLY_UNSEEN=true` for the strict behaviour.
+- For each message only the envelope is read first; mail that isn't from a known bank/UPI sender
+  (or tagged `IMAP_SUBJECT_TAG`) is never downloaded or flagged, and known Message-IDs are skipped
+  before downloading. Processed mail is marked `\Seen` (`IMAP_MARK_SEEN=false` to leave it
+  unread).
 - Tested end-to-end against an in-memory IMAP server (`hoodiecrow-imap`) in
   `tests/email-poller.integration.test.ts`.
 
@@ -248,3 +258,15 @@ Every credit gets a `creditKind` that decides how it affects the budget:
 - Railway runs `npm start` (`next start`), which doesn't work with standalone output. If you move to
   a Docker image later, add `output: 'standalone'` back in `next.config.ts` and run
   `node .next/standalone/server.js`.
+
+### D30. Failed payments
+- "Txn failed. *If amount is debited*, it will be reversed" and "…amount debited will be reversed in
+  2 days" are treated as **failed** (ignored), not as spend — the conditional / auto-reversal wording
+  wins over the word "debited". If the bank does keep the money, its later debit SMS (or the
+  reversal) will come through normally.
+
+### D31. Releasing a self-transfer
+- Un-excluding (or deleting) one half of an auto-detected self-transfer releases both halves and
+  moves them from *Self-transfer* to *People*, unless I had set their category by hand.
+- A Review item can only become a transaction once (row lock + status check), so a double tap can't
+  double count.

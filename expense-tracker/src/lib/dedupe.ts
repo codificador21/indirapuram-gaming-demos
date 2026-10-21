@@ -4,7 +4,9 @@
  *   1. Same reference (UPI RRN / UTR / txn id) + same amount + same direction → duplicate.
  *   2. Both sides carry a 12-digit UPI RRN and they differ → NOT a duplicate (two real payments).
  *   3. Same amount + direction + compatible account (last digits match, or one side unknown)
- *      + occurred within ±10 minutes → duplicate.
+ *      + occurred within ±10 minutes + arrived through a *different* source (SMS vs email vs manual)
+ *      → duplicate. A bank sends one SMS per payment, so two different SMS with the same amount a
+ *      few minutes apart are two payments (two ₹20 chais), not one.
  */
 import { isRrn } from './parser/generic';
 
@@ -16,6 +18,8 @@ export interface DedupeCandidate {
   occurredAt: Date;
   accountLast4: string | null;
   reference: string | null;
+  /** 'sms' | 'email' | 'manual'. When both sides have one and they're equal, rule 3 doesn't apply. */
+  source?: string | null;
 }
 
 export type DuplicateReason = 'reference' | 'window';
@@ -40,6 +44,7 @@ export function duplicateReason(candidate: DedupeCandidate, existing: DedupeCand
     if (rc === re) return 'reference';
     if (isRrn(rc) && isRrn(re)) return null;
   }
+  if (candidate.source && existing.source && candidate.source === existing.source && candidate.source !== 'manual') return null;
   if (Math.abs(candidate.occurredAt.getTime() - existing.occurredAt.getTime()) > DEDUPE_WINDOW_MS) return null;
   if (!accountsCompatible(candidate.accountLast4, existing.accountLast4)) return null;
   return 'window';

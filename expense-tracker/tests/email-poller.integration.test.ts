@@ -49,7 +49,7 @@ function startServer(): Promise<{ port: number; close: () => Promise<void> }> {
           { raw: rawEmail('"HDFC Bank InstaAlerts" <alerts@hdfcbank.net>', hdfc.subject!, hdfc.text, '<hdfc-1@hdfcbank.net>', now), internaldate: imapDate(now), flags: [] },
           { raw: rawEmail('Deals <newsletter@shop.example>', 'Big sale — Rs 500 off!', 'Flat Rs 500 off. Shop now!', '<promo-1@shop.example>', now), internaldate: imapDate(now), flags: [] },
           { raw: rawEmail('Me <me@icloud.com>', '[ET-SMS] VM-AXISBK', `Sender: VM-AXISBK-S\n${axis.text}\n\nSent from my iPhone`, '<fwd-1@icloud.com>', now), internaldate: imapDate(now), flags: [] },
-          { raw: rawEmail('alerts@hdfcbank.net', 'Old alert', 'Rs.99.00 has been debited from account **1234 to VPA x@ybl X on 01-01-26.', '<old-1@hdfcbank.net>', now), internaldate: imapDate(now), flags: ['\\Seen'] },
+          { raw: rawEmail('alerts@hdfcbank.net', 'Already read', 'Rs.99.00 has been debited from account **1234 to VPA zepto.pay@ybl ZEPTO on 01-01-26.', '<read-1@hdfcbank.net>', now), internaldate: imapDate(now), flags: ['\\Seen'] },
         ],
       },
     },
@@ -84,28 +84,31 @@ describe.skipIf(!available)('IMAP email poller', () => {
       mailbox: 'INBOX',
       lookbackDays: 3,
       markSeen: true,
+      onlyUnseen: false,
       filter: { subjectTag: '[ET-SMS]', extraSenders: [] },
     };
     return () => imap.close();
   });
 
-  it('ingests bank alerts and tagged forwarded SMS, leaves other mail alone, marks processed as read', async () => {
+  it('ingests bank alerts (read or unread) and tagged forwarded SMS, leaves other mail alone', async () => {
     const first = await pollMailboxOnce(db, cfg);
-    expect(first).toMatchObject({ checked: 3, matched: 2, created: 2, skipped: 1, errors: 0 });
+    expect(first).toMatchObject({ checked: 4, matched: 3, created: 3, skipped: 1, errors: 0 });
 
     const txns = await db.select().from(transactions);
-    expect(txns.map((t) => t.merchant).sort()).toEqual(['Blinkit', 'Swiggy']);
+    expect(txns.map((t) => t.merchant).sort()).toEqual(['Blinkit', 'Swiggy', 'Zepto']);
     const raws = await db.select().from(rawMessages);
     expect(raws.map((r) => [r.via, r.externalId]).sort()).toEqual([
       ['imap', '<hdfc-1@hdfcbank.net>'],
+      ['imap', '<read-1@hdfcbank.net>'],
       ['imap-forwarded-sms', '<fwd-1@icloud.com>'],
     ]);
     expect(raws.find((r) => r.via === 'imap-forwarded-sms')).toMatchObject({ source: 'sms', sender: 'VM-AXISBK-S' });
 
-    // The two alerts are now \Seen; only the newsletter is still unread — and untouched.
+    // Next poll: the three alerts are recognised by Message-ID and not downloaded again.
     const second = await pollMailboxOnce(db, cfg);
-    expect(second).toMatchObject({ checked: 1, matched: 0, skipped: 1 });
+    expect(second).toMatchObject({ checked: 4, known: 3, matched: 0, created: 0, skipped: 1 });
 
+    // Processed alerts were marked read; the newsletter is still unread and untouched.
     const client = new ImapFlow({ host: '127.0.0.1', port: imap.port, secure: false, auth: { user: 'testuser', pass: 'testpass' }, logger: false });
     await client.connect();
     await client.mailboxOpen('INBOX');
@@ -118,8 +121,13 @@ describe.skipIf(!available)('IMAP email poller', () => {
     const noMark = { ...cfg, markSeen: false };
     await pollMailboxOnce(db, noMark);
     const again = await pollMailboxOnce(db, noMark);
-    expect(again).toMatchObject({ matched: 2, created: 0, duplicates: 2 });
-    expect(await db.select().from(transactions)).toHaveLength(2);
+    expect(again).toMatchObject({ known: 3, matched: 0, created: 0 });
+    expect(await db.select().from(transactions)).toHaveLength(3);
+  });
+
+  it('IMAP_ONLY_UNSEEN=true looks at unread mail only', async () => {
+    const s = await pollMailboxOnce(db, { ...cfg, onlyUnseen: true });
+    expect(s).toMatchObject({ checked: 3, matched: 2, created: 2 });
   });
 
   it('reports a login failure', async () => {

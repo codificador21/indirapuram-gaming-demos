@@ -26,7 +26,8 @@ import { buildTransaction } from './build';
 import { loadIngestContext } from './context';
 
 const INGEST_LOCK_KEY = 727_274_001;
-const SAME_MESSAGE_WINDOW_MS = 60 * 60 * 1000;
+// Shortcut retries / several keyword automations / the email-forwarded copy all arrive within minutes.
+const SAME_MESSAGE_WINDOW_MS = 15 * 60 * 1000;
 
 export interface IngestInput {
   source: MessageSource;
@@ -118,7 +119,7 @@ async function resolveTransaction(tx: DbOrTx, parsed: ParsedTransaction, source:
         ),
       ),
     );
-  const dup = findDuplicate(p, nearby.map((t) => ({ ...t, reference: normaliseRef(t.reference) })));
+  const dup = findDuplicate({ ...p, source }, nearby.map((t) => ({ ...t, reference: normaliseRef(t.reference) })));
   if (dup) {
     const existing = nearby.find((t) => t.id === (dup.match as Transaction).id)!;
     await enrichExisting(tx, existing, p);

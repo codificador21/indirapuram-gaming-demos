@@ -95,6 +95,18 @@ describe.skipIf(!available)('ingest pipeline (Postgres)', () => {
     expect((await db.select().from(rawMessages)).length).toBe(1);
   });
 
+  it('keeps two card spends with the same amount a few minutes apart (no refs, same source)', async () => {
+    const t1 = 'Rs.20.00 spent on your SBI Credit Card ending 5566 at CHAI POINT on 21/10/26. Trxn. not done by you? Report at https://sbicard.com/Dispute';
+    await ingestMessage(db, { source: 'sms', via: 'test', sender: 'VM-SBICRD-S', body: t1, receivedAt: new Date('2026-10-21T09:00:00Z') });
+    const t2 = t1.replace('CHAI POINT', 'CHAI POINT CP');
+    const second = await ingestMessage(db, { source: 'sms', via: 'test', sender: 'VM-SBICRD-S', body: t2, receivedAt: new Date('2026-10-21T09:04:00Z') });
+    expect(second.status).toBe('created');
+    // ...while the bank's email for the same spend still dedupes against the SMS.
+    const email = await ingestMessage(db, { source: 'email', via: 'test', sender: 'alerts@sbicard.com', body: 'Dear Cardholder, Rs.20.00 spent on your SBI Credit Card ending 5566 at CHAI POINT on 21/10/26.', receivedAt: new Date('2026-10-21T09:05:00Z') });
+    expect(email.status).toBe('duplicate');
+    expect(await txnCount()).toBe(2);
+  });
+
   it('keeps two genuine identical payments with different UPI refs', async () => {
     await ingestMessage(db, fromFixture('kotak-upi-sent-sms'));
     const second = fixtureById('kotak-upi-sent-sms').text.replace('629488889999', '629488880000');
@@ -119,6 +131,9 @@ describe.skipIf(!available)('ingest pipeline (Postgres)', () => {
     expect(txn).toMatchObject({ categoryId: 'shopping', categorySource: 'manual', source: 'sms' });
     const [raw] = await db.select().from(rawMessages).where(eq(rawMessages.id, review.rawMessageId!));
     expect(raw).toMatchObject({ status: 'resolved', transactionId: txn.id });
+    // A second tap / resubmit must not create a second transaction.
+    await expect(resolveReview(db, review.rawMessageId!, { amountPaise: 345000, direction: 'debit', occurredAt: new Date() })).rejects.toThrow(/already has a transaction/);
+    expect(await txnCount()).toBe(1);
 
     const other = await ingestMessage(db, fromFixture('unparsed-no-amount-sms'));
     await dismissReview(db, [other.rawMessageId!]);
@@ -164,7 +179,7 @@ describe.skipIf(!available)('ingest pipeline (Postgres)', () => {
     // Un-excluding one half releases the pair.
     await updateTransaction(db, rows[0]!.id, { excludeFromBudget: false });
     const after = await db.select().from(transactions);
-    expect(after.every((r) => !r.excludeFromBudget && r.transferPairId === null)).toBe(true);
+    expect(after.every((r) => !r.excludeFromBudget && r.transferPairId === null && r.categoryId === 'transfers')).toBe(true);
   });
 
   it('remembers a re-categorised merchant for past and future transactions', async () => {

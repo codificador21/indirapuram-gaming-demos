@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { env } from './env';
 import { SESSION_COOKIE, verifySessionToken } from './session';
@@ -31,19 +31,38 @@ export async function requireSession(): Promise<void> {
   if (!(await isLoggedIn())) redirect('/login');
 }
 
-// ── Login throttling (in-memory; single instance) ─────────────────────────────
-const failures: number[] = [];
+// ── Login throttling (in-memory, per client IP; single instance) ──────────────
+// Per IP so a stranger hammering /login can't lock me out from my own phone.
+const failures = new Map<string, number[]>();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 8;
 
-export function loginLocked(): boolean {
-  const now = Date.now();
-  while (failures.length && now - failures[0]! > WINDOW_MS) failures.shift();
-  return failures.length >= MAX_FAILURES;
+/**
+ * Client IP as seen by the hosting proxy. Uses the right-most X-Forwarded-For entry (the one the
+ * platform's proxy appended); left-most entries can be forged by the client.
+ */
+export async function clientIp(): Promise<string> {
+  const h = await headers();
+  const xff = h.get('x-forwarded-for');
+  if (xff) return xff.split(',').map((s) => s.trim()).filter(Boolean).pop() ?? 'unknown';
+  return h.get('x-real-ip') ?? 'unknown';
 }
 
-export function recordLoginFailure() {
-  failures.push(Date.now());
+function recent(ip: string): number[] {
+  const now = Date.now();
+  const list = (failures.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (list.length) failures.set(ip, list);
+  else failures.delete(ip);
+  return list;
+}
+
+export function loginLocked(ip: string): boolean {
+  return recent(ip).length >= MAX_FAILURES;
+}
+
+export function recordLoginFailure(ip: string) {
+  if (failures.size > 10_000) failures.clear(); // bound memory under a spray from many IPs
+  failures.set(ip, [...recent(ip), Date.now()]);
 }
 
 export function checkPassword(candidate: string): boolean {

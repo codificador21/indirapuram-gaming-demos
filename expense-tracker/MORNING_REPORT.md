@@ -2,8 +2,9 @@
 
 **Status: the MVP is built, tested and committed** on branch `mvp/expense-tracker` (PR open against
 `main`). Everything is in the `expense-tracker/` folder; the existing gaming-demos site is untouched.
-CI (typecheck, lint, 197 tests including Postgres and IMAP integration tests, production build) is
-green on GitHub. Nothing is deployed yet — that needs your accounts (about 20 minutes, below).
+CI (typecheck, lint, 204 tests including Postgres and IMAP integration tests, production build) is
+green on GitHub.
+An independent code review of the branch found 10 issues; all are fixed and covered by tests. Nothing is deployed yet — that needs your accounts (about 20 minutes, below).
 
 Screenshots (iPhone size): [home](docs/screenshots/home-dark.png) ·
 [activity](docs/screenshots/activity-dark.png) · [edit sheet](docs/screenshots/edit-sheet-dark.png) ·
@@ -117,7 +118,12 @@ npm run dev       # http://localhost:3000 — password: change-me
 - **Shortcut UI wording** may differ slightly on your iOS version. Some iOS 18+ builds only run
   message automations after the phone is unlocked. The guide covers both.
 - **Dedupe window:** a card-spend email arriving more than 10 minutes after its SMS, with no
-  reference number, will double count. You can delete it, or widen `DEDUPE_WINDOW_MS`.
+  reference number, will double count. You can delete it, or widen `DEDUPE_WINDOW_MS`. The reverse
+  case (two identical-looking payments merged) can be undone from Review → All messages → "Not a
+  duplicate? Add it".
+- **Email poller deviates from the brief on purpose:** it checks all recent mail (not only unread)
+  and skips already-ingested Message-IDs, so alerts you open on your phone aren't lost. Set
+  `IMAP_ONLY_UNSEEN=true` for strict unread-only (DECISIONS D25).
 - **Bank emails are mostly HTML;** they're converted to text with a simple stripper. The email
   templates are based on typical wording and will likely need a tweak once real emails flow.
 - INR only: foreign-currency card spends (USD/EUR) go to Review.
@@ -151,5 +157,5 @@ npm run dev       # http://localhost:3000 — password: change-me
 ## Where to look
 
 - [PLAN.md](PLAN.md): milestones as planned.
-- [DECISIONS.md](DECISIONS.md): 29 decisions, each with what I chose, why, and how to change it.
+- [DECISIONS.md](DECISIONS.md): 31 decisions, each with what I chose, why, and how to change it.
 - [README.md](README.md): code map, scripts, how to add a bank format.

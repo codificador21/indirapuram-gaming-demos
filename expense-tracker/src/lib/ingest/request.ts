@@ -20,7 +20,13 @@ export function parseReceivedAt(value: unknown, now = new Date(), tz = DEFAULT_T
   } else if (typeof value === 'string' && value.trim()) {
     const s = value.trim();
     if (/^\d{10,13}$/.test(s)) d = new Date(Number(s) < 1e12 ? Number(s) * 1000 : Number(s));
-    else if (/^\d{4}-\d{2}-\d{2}T/.test(s)) d = new Date(s);
+    else if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+      // No offset → wall time in the app timezone (new Date() would use the server's zone).
+      const local = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/.exec(s);
+      d = local
+        ? zonedTimeToUtc(Number(local[1]), Number(local[2]), Number(local[3]), Number(local[4]), Number(local[5]), Number(local[6] ?? 0), tz)
+        : new Date(s);
+    }
     else {
       const found = findDate(s);
       if (found) {

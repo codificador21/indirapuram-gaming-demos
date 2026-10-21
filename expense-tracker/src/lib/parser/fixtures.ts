@@ -245,6 +245,23 @@ export const FIXTURES: Fixture[] = [
     expect: { status: 'ignored', reason: 'failed' },
   },
 
+  {
+    id: 'hdfc-upi-failed-sms',
+    source: 'sms',
+    sender: 'VM-HDFCBK-S',
+    receivedAt: R,
+    text: 'Your UPI txn of Rs.500.00 to SWIGGY from HDFC Bank A/c XX1234 has failed. If amount is debited, it will be reversed within 48 hrs. Ref 629400001111',
+    expect: { status: 'ignored', reason: 'failed' },
+  },
+  {
+    id: 'sbi-upi-failed-reversal-sms',
+    source: 'sms',
+    sender: 'BZ-SBIUPI-S',
+    receivedAt: R,
+    text: 'Dear UPI user, your txn of Rs.250.00 to ZOMATO failed. Amount debited from A/c X4321 will be reversed in 2 working days. Ref 629400002222 -SBI',
+    expect: { status: 'ignored', reason: 'failed' },
+  },
+
   // ── SBI ─────────────────────────────────────────────────────────────────────
   {
     id: 'sbi-upi-debit-sms',

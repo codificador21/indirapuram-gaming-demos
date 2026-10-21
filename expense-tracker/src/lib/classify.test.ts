@@ -176,6 +176,12 @@ describe('dedupe', () => {
     expect(duplicateReason({ ...email, direction: 'credit' }, sms)).toBeNull();
     expect(duplicateReason({ ...email, amountPaise: 25_100 }, sms)).toBeNull();
   });
+  it('two different SMS (same source, no ref) a few minutes apart are two payments', () => {
+    const a = { ...sms, reference: null, source: 'sms' };
+    expect(duplicateReason({ ...a, occurredAt: new Date(t0.getTime() + 5 * 60_000) }, a)).toBeNull();
+    expect(duplicateReason({ ...a, source: 'email' }, a)).toBe('window');
+    expect(duplicateReason({ ...a, source: 'sms' }, { ...a, source: 'manual' })).toBe('window');
+  });
   it('non-RRN references of different formats fall back to the window', () => {
     expect(duplicateReason({ ...sms, reference: 'T2610212015123456789' }, sms)).toBe('window');
   });

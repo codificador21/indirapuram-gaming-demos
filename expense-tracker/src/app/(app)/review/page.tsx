@@ -7,7 +7,7 @@ import type { RawStatus } from '@/lib/domain';
 import { appTimezone } from '@/lib/env';
 import { cleanMerchant } from '@/lib/parser/merchant';
 import { findAmounts, flatten } from '@/lib/parser/text';
-import { getCategories, reviewItems } from '@/lib/queries';
+import { getCategories, reviewCount, reviewItems } from '@/lib/queries';
 import { toDateTimeLocalValue } from '@/lib/time';
 import { ReviewList, type ReviewItem } from './review-list';
 
@@ -30,7 +30,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const current = TABS.find((t) => t.id === tab) ?? TABS[0]!;
   const db = getDb();
   const tz = appTimezone();
-  const [rows, categories, pendingRows] = await Promise.all([reviewItems(db, current.statuses, current.id === 'all' ? 150 : 100), getCategories(db), reviewItems(db, ['needs_review'], 500)]);
+  const [rows, categories, pendingCount] = await Promise.all([reviewItems(db, current.statuses, current.id === 'all' ? 150 : 100), getCategories(db), reviewCount(db)]);
 
   const items: ReviewItem[] = rows.map((r) => {
     const parsed = (r.parsed ?? {}) as { partial?: Partial; txn?: Partial };
@@ -68,7 +68,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
             className={`rounded-xl py-2 text-center text-[13px] font-semibold ${t.id === current.id ? 'bg-surface text-ink shadow ring-1 ring-line' : 'text-muted'}`}
           >
             {t.label}
-            {t.id === 'review' && pendingRows.length > 0 ? ` (${pendingRows.length})` : ''}
+            {t.id === 'review' && pendingCount > 0 ? ` (${pendingCount})` : ''}
           </Link>
         ))}
       </div>

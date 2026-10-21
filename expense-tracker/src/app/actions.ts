@@ -7,13 +7,13 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getDb } from '@/db';
 import { fixedCommitments, merchantRules, myAccounts, settings } from '@/db/schema';
-import { checkPassword, loginLocked, recordLoginFailure, requireSession } from '@/lib/auth';
+import { checkPassword, clientIp, loginLocked, recordLoginFailure, requireSession } from '@/lib/auth';
 import { ACCOUNT_TYPES, COMMITMENT_KINDS, CREDIT_KINDS, type CreditKind } from '@/lib/domain';
 import { appTimezone } from '@/lib/env';
 import { rupeesToPaise } from '@/lib/money';
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
 import { fromDateTimeLocalValue } from '@/lib/time';
-import { createTransaction, deleteTransaction, dismissReview, resolveReview, updateTransaction } from '@/lib/transactions';
+import { createTransaction, deleteTransaction, dismissReview, resolveReview, ReviewConflictError, updateTransaction } from '@/lib/transactions';
 
 export type ActionState = { ok: boolean; message?: string; error?: string; id?: number } | null;
 
@@ -22,11 +22,12 @@ const refreshAll = () => revalidatePath('/', 'layout');
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  if (loginLocked()) return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' };
+  const ip = await clientIp();
+  if (loginLocked(ip)) return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' };
   if (!process.env.APP_PASSWORD) return { ok: false, error: 'APP_PASSWORD is not set on the server (see .env.example).' };
   const password = String(formData.get('password') ?? '');
   if (!checkPassword(password)) {
-    recordLoginFailure();
+    recordLoginFailure(ip);
     return { ok: false, error: 'Wrong password' };
   }
   const token = await createSessionToken();
@@ -102,9 +103,14 @@ export async function resolveReviewAction(_prev: ActionState, formData: FormData
   if (!Number.isInteger(rawId)) return { ok: false, error: 'Missing message id' };
   const r = readTxnForm(formData);
   if ('error' in r) return { ok: false, error: r.error };
-  const txn = await resolveReview(getDb(), rawId, r.value);
-  refreshAll();
-  return { ok: true, id: txn.id, message: 'Transaction created' };
+  try {
+    const txn = await resolveReview(getDb(), rawId, r.value);
+    refreshAll();
+    return { ok: true, id: txn.id, message: 'Transaction created' };
+  } catch (err) {
+    if (err instanceof ReviewConflictError) return { ok: false, error: err.message };
+    throw err;
+  }
 }
 
 export async function dismissReviewAction(rawIds: number[]) {

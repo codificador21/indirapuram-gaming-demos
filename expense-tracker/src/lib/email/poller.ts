@@ -1,14 +1,17 @@
 /**
- * IMAP poller: reads unseen mail from the configured mailbox, keeps only bank/UPI alert senders and
- * subjects carrying IMAP_SUBJECT_TAG (SMS forwarded by the Shortcut fallback), and feeds them to the
- * ingest pipeline. Message-IDs are stored, so nothing is ingested twice even if \Seen isn't set.
+ * IMAP poller: looks at mail from the last IMAP_LOOKBACK_DAYS, keeps only bank/UPI alert senders and
+ * subjects carrying IMAP_SUBJECT_TAG (SMS forwarded by the Shortcut fallback), skips Message-IDs that
+ * were already ingested, and feeds the rest to the ingest pipeline.
  *
+ * By default it does NOT rely on the \Seen flag (an alert I open on my phone before the next poll
+ * would otherwise be lost); set IMAP_ONLY_UNSEEN=true to look at unread mail only.
  * Mail from anyone else is never downloaded or flagged — only its envelope is read.
  */
+import { inArray } from 'drizzle-orm';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import type { Db } from '@/db';
-import { appState } from '@/db/schema';
+import { appState, rawMessages } from '@/db/schema';
 import { env, imapConfigured } from '@/lib/env';
 import { ingestMessage } from '@/lib/ingest/pipeline';
 import { isKnownAlertSender } from '@/lib/parser/banks';
@@ -17,6 +20,8 @@ import type { PollerState } from './poller-state';
 
 export interface PollSummary {
   checked: number;
+  /** Matched alerts skipped because their Message-ID was ingested before. */
+  known: number;
   matched: number;
   created: number;
   duplicates: number;
@@ -35,6 +40,7 @@ export interface ImapConfig {
   mailbox: string;
   lookbackDays: number;
   markSeen: boolean;
+  onlyUnseen: boolean;
   filter: EmailFilter;
 }
 
@@ -50,6 +56,7 @@ export function imapConfigFromEnv(): ImapConfig | null {
     mailbox: e.IMAP_MAILBOX,
     lookbackDays: Math.max(1, e.IMAP_LOOKBACK_DAYS),
     markSeen: e.IMAP_MARK_SEEN,
+    onlyUnseen: e.IMAP_ONLY_UNSEEN,
     filter: {
       subjectTag: e.IMAP_SUBJECT_TAG,
       extraSenders: (e.IMAP_EXTRA_SENDERS ?? '')
@@ -61,7 +68,7 @@ export function imapConfigFromEnv(): ImapConfig | null {
 }
 
 export function summaryText(s: PollSummary): string {
-  if (s.matched === 0) return `checked ${s.checked} unread, nothing from your banks`;
+  if (s.matched === 0) return `checked ${s.checked} emails, nothing new from your banks`;
   return `${s.matched} alert${s.matched === 1 ? '' : 's'}: ${s.created} new, ${s.duplicates} duplicate, ${s.ignored} ignored, ${s.review} to review${s.errors ? `, ${s.errors} failed` : ''}`;
 }
 
@@ -83,11 +90,15 @@ export function describeImapError(err: unknown): string {
   return e?.message ?? String(err);
 }
 
+function fallbackMessageId(cfg: ImapConfig, uid: number) {
+  return `<imap-${cfg.user}-${cfg.mailbox}-${uid}>`;
+}
+
 let running = false;
 
 /** One poll cycle. Safe to call concurrently (a second call while one runs is a no-op). */
 export async function pollMailboxOnce(db: Db, cfg: ImapConfig, log: Pick<Console, 'log' | 'error'> = console): Promise<PollSummary> {
-  const summary: PollSummary = { checked: 0, matched: 0, created: 0, duplicates: 0, ignored: 0, review: 0, skipped: 0, errors: 0 };
+  const summary: PollSummary = { checked: 0, known: 0, matched: 0, created: 0, duplicates: 0, ignored: 0, review: 0, skipped: 0, errors: 0 };
   if (running) return summary;
   running = true;
   const client = new ImapFlow({
@@ -102,20 +113,29 @@ export async function pollMailboxOnce(db: Db, cfg: ImapConfig, log: Pick<Console
     const lock = await client.getMailboxLock(cfg.mailbox);
     try {
       const since = new Date(Date.now() - cfg.lookbackDays * 86_400_000);
-      const uids = (await client.search({ seen: false, since }, { uid: true })) || [];
+      const uids = (await client.search(cfg.onlyUnseen ? { seen: false, since } : { since }, { uid: true })) || [];
       summary.checked = uids.length;
-      if (uids.length === 0) return summary;
 
       // 1. Envelopes only (cheap) — decide which messages are ours. No other IMAP command may run
       //    while iterating a fetch, so collect first.
-      const candidates: number[] = [];
-      for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
-        const from = msg.envelope?.from?.[0]?.address ?? '';
-        const subject = msg.envelope?.subject ?? '';
-        const tagged = cfg.filter.subjectTag && subject.toLowerCase().includes(cfg.filter.subjectTag.toLowerCase());
-        if (tagged || isKnownAlertSender(from, cfg.filter.extraSenders)) candidates.push(msg.uid);
-        else summary.skipped += 1;
+      const matches: Array<{ uid: number; messageId: string }> = [];
+      if (uids.length > 0) {
+        for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
+          const from = msg.envelope?.from?.[0]?.address ?? '';
+          const subject = msg.envelope?.subject ?? '';
+          const tagged = cfg.filter.subjectTag && subject.toLowerCase().includes(cfg.filter.subjectTag.toLowerCase());
+          if (tagged || isKnownAlertSender(from, cfg.filter.extraSenders)) {
+            matches.push({ uid: msg.uid, messageId: msg.envelope?.messageId ?? fallbackMessageId(cfg, msg.uid) });
+          } else summary.skipped += 1;
+        }
       }
+      const known = matches.length
+        ? new Set(
+            (await db.select({ id: rawMessages.externalId }).from(rawMessages).where(inArray(rawMessages.externalId, matches.map((m) => m.messageId)))).map((r) => r.id),
+          )
+        : new Set<string | null>();
+      const candidates = matches.filter((m) => !known.has(m.messageId)).map((m) => m.uid);
+      summary.known = matches.length - candidates.length;
 
       // 2. Download + ingest the matches, one at a time.
       for (const uid of candidates) {
@@ -130,7 +150,7 @@ export async function pollMailboxOnce(db: Db, cfg: ImapConfig, log: Pick<Console
               subject: mail.subject ?? msg.envelope?.subject ?? '',
               text: mail.text ?? null,
               html: typeof mail.html === 'string' ? mail.html : null,
-              messageId: mail.messageId ?? msg.envelope?.messageId ?? `<imap-${cfg.user}-${cfg.mailbox}-${uid}>`,
+              messageId: mail.messageId ?? msg.envelope?.messageId ?? fallbackMessageId(cfg, uid),
               date: mail.date ?? (msg.internalDate ? new Date(msg.internalDate) : new Date()),
             },
             cfg.filter,

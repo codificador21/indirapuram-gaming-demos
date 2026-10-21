@@ -44,6 +44,7 @@ const schema = z.object({
   IMAP_SUBJECT_TAG: z.string().optional().default('[ET-SMS]'),
   IMAP_EXTRA_SENDERS: optionalString,
   IMAP_MARK_SEEN: bool(true),
+  IMAP_ONLY_UNSEEN: bool(false),
 });
 
 export type Env = z.infer<typeof schema>;

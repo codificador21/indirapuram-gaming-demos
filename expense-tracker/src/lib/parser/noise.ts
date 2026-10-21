@@ -9,7 +9,10 @@ const PAST_TXN_VERB =
   /\b(debited|credited|spent|withdrawn|deposited|deducted|sent|received|paid|transferred|has been used|used for|thank you for using|money sent|money received)\b/i;
 
 const FUTURE_OR_CONDITIONAL =
-  /\b(will be|shall be|to be|would be|may be|can be|get|getting)\s+(auto[- ]?)?(debited|credited|deducted|charged|paid|received|sent)\b|\bif\s+(already\s+)?(paid|done|received)\b|\bon approving\b[^.]*|\bonce\s+(paid|received)\b/gi;
+  /\b(will be|shall be|to be|would be|may be|can be|get|getting)\s+(auto[- ]?)?(debited|credited|deducted|charged|paid|received|sent)\b|\bif\s+(already\s+)?(paid|done|received)\b|\bif\s+(?:the\s+|any\s+)?(?:amount|money|rs\.?|inr|₹)?\s*(?:is|has been|was|gets|got|is already)?\s*(?:debited|deducted)\b|\bon approving\b[^.]*|\bonce\s+(paid|received)\b/gi;
+
+/** A failed payment whose (possible) debit will be returned automatically. */
+const AUTO_REVERSAL = /\b(will be|shall be|to be|would be)\s+(auto[- ]?)?(reversed|refunded|credited back|returned)\b/i;
 
 /** Evidence that the message refers to a concrete account/card/UPI transaction. */
 const ACCOUNT_EVIDENCE =
@@ -51,7 +54,11 @@ export function classifyNoise(flat: string): IgnoreReason | null {
 
   if (OTP.test(flat) && !past) return 'otp';
   if (REQUEST.test(flat) && !(past && evidence && !/will be debited/i.test(flat))) return 'request';
-  if (FAILED.test(flat) && !/\b(debited|credited|spent|withdrawn)\b/i.test(flat)) return 'failed';
+  if (FAILED.test(flat)) {
+    // "Txn failed. If amount is debited, it will be reversed" is still a failure, not a debit.
+    const definite = /\b(debited|credited|spent|withdrawn)\b/i.test(flat.replace(FUTURE_OR_CONDITIONAL, ' '));
+    if (!definite || AUTO_REVERSAL.test(flat)) return 'failed';
+  }
   if (REMINDER.test(flat) && !past) return 'reminder';
   if (PROMO.test(flat) && !(past && evidence)) return 'promo';
   if (!past && BALANCE_ONLY.test(flat)) return 'balance_info';
