@@ -4,7 +4,8 @@
 `main`). Everything is in the `expense-tracker/` folder; the existing gaming-demos site is untouched.
 CI (typecheck, lint, 204 tests including Postgres and IMAP integration tests, production build) is
 green on GitHub.
-An independent code review of the branch found 10 issues; all are fixed and covered by tests. Nothing is deployed yet — that needs your accounts (about 20 minutes, below).
+An independent code review of the branch found 10 issues; all are fixed, with tests added for the
+behavioural ones. Nothing is deployed yet — that needs your accounts (about 20 minutes, below).
 
 Screenshots (iPhone size): [home](docs/screenshots/home-dark.png) ·
 [activity](docs/screenshots/activity-dark.png) · [edit sheet](docs/screenshots/edit-sheet-dark.png) ·
@@ -20,8 +21,8 @@ Screenshots (iPhone size): [home](docs/screenshots/home-dark.png) ·
 - `POST /api/ingest/sms`, bearer-token protected, built for the iOS Shortcut. Accepts JSON
   `{ text, sender?, receivedAt? }` or plain text.
 - IMAP email poller (`npm run worker`, or `npm run poll:once` / `POST /api/cron/poll-email` for
-  cron). It reads only *unseen* mail from known bank/UPI senders or with the `[ET-SMS]` subject tag,
-  marks it read and stores the Message-ID. Without IMAP settings it exits cleanly. It was tested
+  cron). It reads recent mail from known bank/UPI senders or with the `[ET-SMS]` subject tag, skips
+  Message-IDs it has already ingested, and marks processed mail read. Without IMAP settings it exits cleanly. It was tested
   against a real IMAP server implementation; other mail is never downloaded or touched.
 - The "forward SMS by email" fallback goes through the same pipeline.
 - Optional `POST /api/ingest/email` for email-to-webhook services.
@@ -37,8 +38,9 @@ Screenshots (iPhone size): [home](docs/screenshots/home-dark.png) ·
   **Review inbox**, where one tap turns it into a transaction. "Re-check with latest parser"
   reprocesses old messages after a parser fix.
 
-**Dedupe:** UPI ref first; then amount + direction + account within ±10 minutes. Two different UPI
-refs never merge. The same SMS posted twice, or the same email processed twice, is recorded once.
+**Dedupe:** UPI ref first; then amount + direction + account within ±10 minutes across sources (an
+SMS and its email). Two different UPI refs never merge, and two different SMS for same-amount
+payments stay separate. The same SMS posted twice, or the same email processed twice, is recorded once.
 Concurrent SMS + email arrivals are serialised with a DB lock. It's tested in both arrival orders
 and for a race.
 
