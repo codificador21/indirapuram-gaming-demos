@@ -68,6 +68,8 @@ describe('learned rules', () => {
     expect(findRule('swiggy', rules)?.categoryId).toBe('groceries');
     expect(findRule('amazonpayindia', rules)?.categoryId).toBe('bills');
     expect(findRule('amazon', rules)).toBeNull();
+    // A rule for Swiggy must not swallow Swiggy Instamart (a different merchant/category).
+    expect(findRule('swiggyinstamart', rules)).toBeNull();
     expect(findRule(null, rules)).toBeNull();
   });
 

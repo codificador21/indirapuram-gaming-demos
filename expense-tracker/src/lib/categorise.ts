@@ -133,13 +133,21 @@ export interface RuleLike {
   excludeFromBudget?: boolean;
 }
 
-/** Learned rule for a merchant key: exact match, else the longest rule key (≥4 chars) the key starts with. */
+/** Suffixes that don't change which merchant it is ("amazonpay" + "india"). */
+const GENERIC_SUFFIXES = new Set(['india', 'in', 'pay', 'payments', 'payment', 'online', 'store', 'stores', 'retail', 'services', 'technologies', 'tech', 'limited', 'ltd', 'pvtltd', 'co', 'upi', 'app', 'com']);
+
+/**
+ * Learned rule for a merchant key: exact match first; otherwise a rule key (≥4 chars) that the
+ * transaction key starts with, but only if what's left is a generic suffix — so a rule for
+ * "amazonpay" covers "amazonpayindia", while a rule for "swiggy" does NOT capture "swiggyinstamart".
+ */
 export function findRule<T extends RuleLike>(key: string | null | undefined, rules: T[]): T | null {
   if (!key) return null;
   let best: T | null = null;
   for (const r of rules) {
     if (r.merchantKey === key) return r;
-    if (r.merchantKey.length >= 4 && key.startsWith(r.merchantKey) && (!best || r.merchantKey.length > best.merchantKey.length)) best = r;
+    const rest = key.slice(r.merchantKey.length);
+    if (r.merchantKey.length >= 4 && key.startsWith(r.merchantKey) && GENERIC_SUFFIXES.has(rest) && (!best || r.merchantKey.length > best.merchantKey.length)) best = r;
   }
   return best;
 }

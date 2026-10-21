@@ -127,8 +127,9 @@ Every credit gets a `creditKind` that decides how it affects the budget:
   = "People" → Other.
 - Re-categorising in the UI with "Remember for <merchant>" (on by default) saves a rule keyed on the
   normalised merchant name and re-files past auto-categorised transactions from that merchant (not
-  ones I set by hand). A rule key also matches longer names that start with it
-  (`amazonpay` → `amazonpayindia`).
+  ones I set by hand). A rule key also matches a longer name when only a generic suffix is added
+  (`amazonpay` → `amazonpayindia`), but not a different merchant that happens to share a prefix
+  (`swiggy` ≠ `swiggyinstamart`). Suffix list: `GENERIC_SUFFIXES` in `src/lib/categorise.ts`.
 
 ### D15. Webhook auth and payload
 - `POST /api/ingest/sms` requires `Authorization: Bearer $INGEST_TOKEN` (constant-time compare).

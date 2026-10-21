@@ -39,7 +39,8 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
   const next = String(formData.get('next') ?? '/');
-  redirect(next.startsWith('/') && !next.startsWith('//') ? next : '/');
+  // Only same-site paths: "/x" yes; "//evil.com", "/\\evil.com" and absolute URLs no.
+  redirect(/^\/(?![/\\])/.test(next) ? next : '/');
 }
 
 export async function logoutAction() {
