@@ -73,6 +73,16 @@ async function saveState(db: Db, patch: Partial<PollerState>) {
     .onConflictDoUpdate({ target: appState.key, set: { value: patch.lastError === undefined ? { ...value, lastError: null } : value } });
 }
 
+/** imapflow errors are terse ("Command failed"); turn the common ones into something actionable. */
+export function describeImapError(err: unknown): string {
+  const e = err as { authenticationFailed?: boolean; responseText?: string; code?: string; message?: string };
+  if (e?.authenticationFailed) return 'Login failed — check IMAP_USER / IMAP_PASSWORD (Gmail needs a 16-character app password, and IMAP enabled).';
+  if (e?.code === 'ENOTFOUND') return `Can't find the IMAP server — check IMAP_HOST.`;
+  if (e?.code === 'ECONNREFUSED' || e?.code === 'ETIMEDOUT') return 'Could not connect — check IMAP_HOST / IMAP_PORT / IMAP_SECURE.';
+  if (e?.responseText) return e.responseText;
+  return e?.message ?? String(err);
+}
+
 let running = false;
 
 /** One poll cycle. Safe to call concurrently (a second call while one runs is a no-op). */
@@ -148,9 +158,9 @@ export async function pollMailboxOnce(db: Db, cfg: ImapConfig, log: Pick<Console
     await saveState(db, { lastRunAt: new Date().toISOString(), lastResult: summaryText(summary) });
     return summary;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = describeImapError(err);
     await saveState(db, { lastRunAt: new Date().toISOString(), lastResult: 'failed', lastError: message, lastErrorAt: new Date().toISOString() }).catch(() => undefined);
-    throw err;
+    throw new Error(message, { cause: err });
   } finally {
     running = false;
     await client.logout().catch(() => undefined);

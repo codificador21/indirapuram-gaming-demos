@@ -19,6 +19,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/seed.ts --reset",
+    "setup": "npm run db:migrate && npm run db:seed",
     "worker": "tsx src/worker/email-worker.ts",
     "poll:once": "tsx src/worker/email-worker.ts --once",
     "ingest:sample": "tsx scripts/ingest-sample.ts"

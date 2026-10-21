@@ -1,8 +1,6 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Self-contained server bundle: smaller deploys, `node .next/standalone/server.js` also works.
-  output: 'standalone',
   // These are only used server-side (ingest pipeline / IMAP); keep them out of the bundler.
   serverExternalPackages: ['pg', 'imapflow', 'mailparser'],
   poweredByHeader: false,
