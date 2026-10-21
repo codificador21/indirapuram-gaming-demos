@@ -137,3 +137,29 @@ Every credit gets a `creditKind` that decides how it affects the budget:
   plain-text body are accepted because Shortcuts are hand-built. `receivedAt` can be omitted — the
   automation runs the instant the SMS arrives, so server time is accurate; ISO, epoch and the
   default Shortcuts date formats are understood.
+
+## Budget
+
+### D16. "Safe to spend today" is fixed at the start of the day
+- **Chose:** today's allowance = (monthly budget − net spend *before today*) ÷ days left *including
+  today*. The big number on Home is what's left of it: allowance − net spend today (can go
+  negative). The naive fixed figure (budget ÷ days in month) is shown next to it, plus "tomorrow"
+  (what tomorrow's allowance becomes if I stop spending now).
+- **Why:** the spec's formula re-evaluated after every purchase barely moves when I spend (₹500
+  spent today only lowers it by ₹500/11), so the number would keep saying I can spend more. Fixing
+  it at the start of the day makes it a real daily allowance; rollover still works exactly as
+  specified across days (under-spend carries forward, over-spend shrinks future days).
+- **Change it:** `computeBudget()` in `src/lib/budget.ts`.
+
+### D17. Budget month = calendar month (salary cycle optional)
+- The spec says "days in the current month", so the default period is the calendar month.
+  Settings → "Budget cycle" can switch to salary-day → day-before-next-salary-day (handy if salary
+  lands on the 25th–31st). Salary day 31 clamps to the month's last day.
+- Monthly budget = configured net salary − active fixed commitments (never below zero). Actual
+  salary credits don't change it; they are tagged `salary` for the record.
+
+### D18. Net spend
+- Debits count; refunds and reimbursements subtract; salary/other income and excluded rows
+  (self-transfers, card bill payments, fixed commitments, manual exclusions) are ignored.
+- Category charts show gross spend per category, with refunds/paybacks shown as a separate line,
+  so no category ever shows a negative bar.
