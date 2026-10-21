@@ -28,7 +28,7 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
   { id: 'investments', name: 'Investments', emoji: '📈', color: '#10b981', kind: 'expense' },
   { id: 'emi_loans', name: 'EMIs & loans', emoji: '🏦', color: '#64748b', kind: 'expense' },
   { id: 'cash', name: 'Cash', emoji: '💵', color: '#22c55e', kind: 'expense' },
-  { id: 'transfers', name: 'Sent to people', emoji: '👥', color: '#a855f7', kind: 'expense' },
+  { id: 'transfers', name: 'People', emoji: '👥', color: '#a855f7', kind: 'expense' },
   { id: 'gifts', name: 'Gifts & donations', emoji: '🎁', color: '#e11d48', kind: 'expense' },
   { id: 'fees', name: 'Fees & charges', emoji: '🧾', color: '#78716c', kind: 'expense' },
   { id: 'other', name: 'Other', emoji: '🏷️', color: '#94a3b8', kind: 'expense' },

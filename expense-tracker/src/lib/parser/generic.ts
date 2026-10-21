@@ -121,7 +121,7 @@ function firstMatch(flat: string, patterns: RegExp[]): string | null {
   return null;
 }
 
-/** NEFT/IMPS/RTGS credit descriptor: "NEFT Cr-ICIC0000001-ACME TECHNOLOGIES PVT LTD-ARPIT-ICICN52026093012345". */
+/** NEFT/IMPS/RTGS credit descriptor: "NEFT Cr-ICIC0000001-ACME TECHNOLOGIES PVT LTD-AARAV-ICICN52026093012345". */
 export function parseNeftDescriptor(s: string): { name: string; ref: string | null } | null {
   const m = /\b(?:neft|imps|rtgs)\s*(?:cr|dr)?[-\s]+[a-z]{4}0[a-z0-9]{6}-(.+?)-(?:.+?-)?([a-z0-9]{10,})\s*$/i.exec(s.trim());
   return m ? { name: m[1]!.trim(), ref: m[2]!.toUpperCase() } : null;

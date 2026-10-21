@@ -5,7 +5,7 @@
  *   1. hard rules from the parser (credit-card bill payment / self-transfer, ATM → Cash, salary, interest)
  *   2. learned merchant rules (created when I re-categorise a merchant in the UI)
  *   3. the built-in keyword map below (longest matching keyword wins: "swiggy instamart" → Groceries)
- *   4. person-to-person transfers → "Sent to people"
+ *   4. person-to-person transfers → "People"
  *   5. fallback "Other"
  */
 import type { Channel, CreditKind, Direction } from './domain';

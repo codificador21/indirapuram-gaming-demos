@@ -67,7 +67,7 @@ export const FIXTURES: Fixture[] = [
     source: 'sms',
     sender: 'VM-HDFCBK-S',
     receivedAt: '2026-09-30T06:15:00.000Z',
-    text: 'Update! INR 85,000.00 deposited in HDFC Bank A/c XX1234 on 30-SEP-26 for NEFT Cr-ICIC0000001-ACME TECHNOLOGIES PVT LTD-ARPIT BHUSHAN-ICICN52026093012345.Avl bal INR 1,02,345.67. Cheque deposits in A/C are subject to clearing',
+    text: 'Update! INR 85,000.00 deposited in HDFC Bank A/c XX1234 on 30-SEP-26 for NEFT Cr-ICIC0000001-ACME TECHNOLOGIES PVT LTD-AARAV MEHTA-ICICN52026093012345.Avl bal INR 1,02,345.67. Cheque deposits in A/C are subject to clearing',
     expect: { status: 'transaction', amount: 85000, direction: 'credit', merchant: 'Acme Technologies', accountLast4: '1234', reference: 'ICICN52026093012345', balance: 102345.67, occurredAt: '2026-09-30T06:15:00.000Z', channel: 'neft' },
   },
   {

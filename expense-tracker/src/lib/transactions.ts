@@ -27,7 +27,8 @@ export interface ManualTransactionInput {
 export async function createTransaction(db: DbOrTx, input: ManualTransactionInput, source: TxnSource = 'manual'): Promise<Transaction> {
   if (!Number.isSafeInteger(input.amountPaise) || input.amountPaise <= 0) throw new Error('Amount must be positive');
   const ctx = await loadIngestContext(db);
-  const merchant = cleanMerchant(input.merchant) ?? (input.merchant?.trim() || null);
+  // Keep what I typed for manual entries; only tidy names that came from a message.
+  const merchant = source === 'manual' ? input.merchant?.trim() || null : (cleanMerchant(input.merchant) ?? (input.merchant?.trim() || null));
   const key = merchantKey(merchant);
   const channel = input.channel ?? 'cash';
   const hints = {};

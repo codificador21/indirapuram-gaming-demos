@@ -124,7 +124,7 @@ Every credit gets a `creditKind` that decides how it affects the budget:
 ### D14. Categorisation
 - Precedence: card-bill/self-transfer → my learned rules → ATM = Cash / salary / income → keyword map
   (longest keyword wins, so "Swiggy Instamart" is Groceries but "Swiggy" is Food) → person-to-person
-  = "Sent to people" → Other.
+  = "People" → Other.
 - Re-categorising in the UI with "Remember for <merchant>" (on by default) saves a rule keyed on the
   normalised merchant name and re-files past auto-categorised transactions from that merchant (not
   ones I set by hand). A rule key also matches longer names that start with it
@@ -163,3 +163,65 @@ Every credit gets a `creditKind` that decides how it affects the budget:
   (self-transfers, card bill payments, fixed commitments, manual exclusions) are ignored.
 - Category charts show gross spend per category, with refunds/paybacks shown as a separate line,
   so no category ever shows a negative bar.
+
+## UI
+
+### D19. App name "Kharcha"
+- Short enough for the iPhone home-screen label, and means "expense" in Hindi.
+- **Change it:** `APP_NAME` in `src/lib/theme.ts` (+ the icon in `public/icons/`).
+
+### D20. Dark by default, theme in a cookie
+- The theme is stored in an `et_theme` cookie and rendered on the server (`<html data-theme>`), so
+  there is no light→dark flash on load. Toggle on Home (sun/moon) or Settings → Appearance.
+- Colours are CSS variables in `src/app/globals.css`; light and dark values are chosen separately
+  (not an automatic inversion).
+
+### D21. Charts
+- **Category spend:** horizontal bars in a single hue, sorted, with the amount at the bar tip, top 8
+  + "N more categories". The list *is* the data table. (A donut with ~18 categories would need more
+  distinguishable colours than exist.)
+- **Daily spend vs budget:** columns = spend per day, line = that day's rollover budget, one rupee
+  axis, legend + tooltip + "Table" toggle. Days where refunds exceeded spending draw as ₹0 bars
+  (tooltip/table show the real negative net).
+- **Month so far vs even pace:** cumulative spend vs a straight budget line.
+- Series colours (blue spend, orange budget) were run through a colour-vision-deficiency validator
+  for both themes. Status colours (amber/red) only appear with an icon and a text label.
+
+### D22. Mobile interactions
+- Tap a transaction → bottom sheet: one tap on a category saves it (and, by default, remembers it
+  for that merchant) and closes the sheet. Exclude-from-budget and credit kind toggle instantly
+  (optimistic), notes/merchant/amount/date have a Save button.
+- Swipe a row left → quick "Category" and "Exclude/Include" buttons.
+- Quick add: amount field is focused with the numeric keypad, Cash is pre-selected, typing a
+  merchant I've used before pre-selects its category, and the form resets after Save for
+  back-to-back entries.
+
+### D23. PWA
+- `app/manifest.ts` + icons (PNG rendered from `public/icons/icon.svg`; regenerate with any
+  SVG→PNG tool at 180/192/512 px) + `apple-mobile-web-app-*` meta → "Add to Home Screen" opens
+  full-screen with its own icon.
+- `public/sw.js` (registered in production only): cache-first for hashed static assets, network-first
+  for pages with an offline fallback page. API calls and server actions are never cached.
+
+### D24. Auth
+- One password (`APP_PASSWORD`) → 30-day HS256 JWT in an httpOnly, SameSite=Lax cookie (Secure in
+  production). `src/proxy.ts` gates every page; every server action re-checks the session.
+- 8 wrong passwords within 15 minutes locks login for the rest of that window (in-memory, per
+  instance — fine for one user on one instance).
+
+## Email
+
+### D25. IMAP poller as a separate process (+ cron endpoint)
+- `npm run worker` polls every `IMAP_POLL_INTERVAL_SECONDS` (default 120 s) and backs off up to
+  15 minutes on repeated failures. Without IMAP env vars it logs "disabled" and exits 0, so the web
+  app never depends on it.
+- Alternatives for hosts without a worker: `npm run poll:once` (cron job) or
+  `POST /api/cron/poll-email` with the ingest token (any external cron), or Settings → "Check email
+  now".
+- Only **unseen** mail from the last `IMAP_LOOKBACK_DAYS` is considered. For each message only the
+  envelope is read first; mail that isn't from a known bank/UPI sender (or tagged
+  `IMAP_SUBJECT_TAG`) is never downloaded or flagged. Processed mail is marked `\Seen`
+  (`IMAP_MARK_SEEN=false` to leave it unread); the Message-ID is stored so it is never ingested
+  twice either way.
+- Tested end-to-end against an in-memory IMAP server (`hoodiecrow-imap`) in
+  `tests/email-poller.integration.test.ts`.

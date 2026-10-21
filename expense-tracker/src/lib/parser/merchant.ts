@@ -7,6 +7,8 @@ const VPA_STOP = new Set([
   'ibl', 'axl', 'oksbi', 'okaxis', 'okhdfcbank', 'okicici', 'razorpay', 'rzp', 'pos', 'payu', 'cf', 'cashfree',
   'mab', 'bqr', 'yespay', 'blr', 'del', 'mum', 'hyd', 'che', 'in', 'india', 'online', 'order', 'orders', 'payments',
   'payment', 'store', 'shop', 'billdesk', 'icici', 'hdfc', 'sbi', 'axis', 'kotak', 'yesbank', 'pg', 'refund', 'refunds',
+  'ncr', 'noida', 'gurgaon', 'gurugram', 'ggn', 'delhi', 'dl', 'bangalore', 'bengaluru', 'mumbai', 'bom', 'pune', 'chennai',
+  'kolkata', 'kol', 'hyderabad', 'ahmedabad', 'jaipur', 'lucknow', 'chandigarh', 'ghaziabad',
 ]);
 
 /** Derives a readable name from a VPA: swiggy.upi@axisbank → Swiggy, rahul.sharma@okicici → Rahul Sharma. */

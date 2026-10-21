@@ -153,7 +153,7 @@ describe.skipIf(!available)('ingest pipeline (Postgres)', () => {
     });
     const credit = await ingestMessage(db, {
       source: 'sms', via: 'test', sender: 'CP-CBSSBI-S', receivedAt: new Date('2026-10-21T09:03:00Z'),
-      body: 'Your A/C XXXXX4321 Credited INR 10,000.00 on 21/10/26 -Deposit by transfer from ARPIT BHUSHAN. Avl Bal INR 20,000.00-SBI',
+      body: 'Your A/C XXXXX4321 Credited INR 10,000.00 on 21/10/26 -Deposit by transfer from AARAV MEHTA. Avl Bal INR 20,000.00-SBI',
     });
     expect(debit.status).toBe('created');
     expect(credit.status).toBe('created');

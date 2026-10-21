@@ -55,7 +55,7 @@ export function findAmounts(flat: string): FoundAmount[] {
 const ACRONYMS = new Set([
   'ATM', 'KFC', 'PVR', 'IRCTC', 'BSES', 'SBI', 'HDFC', 'ICICI', 'LIC', 'ACT', 'UPI', 'NEFT', 'IMPS', 'HP',
   'BPCL', 'IOCL', 'HPCL', 'BSNL', 'MTNL', 'IKEA', 'H&M', 'ITC', 'NPS', 'EMI', 'BBMP', 'MSEB', 'TNEB', 'OYO',
-  'BMTC', 'DTC', 'RBL', 'IDFC', 'PNB', 'BOB', 'IOB', 'UCO', 'TCS', 'HCL', 'IBM',
+  'BMTC', 'DTC', 'DMRC', 'IGL', 'MGL', 'NHAI', 'IOC', 'RBL', 'IDFC', 'PNB', 'BOB', 'IOB', 'UCO', 'TCS', 'HCL', 'IBM',
 ]);
 const SPECIAL_CASE: Record<string, string> = { DMART: 'DMart', MCDONALDS: "McDonald's", IPHONE: 'iPhone', BIGBASKET: 'BigBasket', MAKEMYTRIP: 'MakeMyTrip', PHONEPE: 'PhonePe', BOOKMYSHOW: 'BookMyShow', JIOMART: 'JioMart' };
 

@@ -6,7 +6,7 @@ import { accountsCompatible, duplicateReason, findDuplicate, type DedupeCandidat
 const ctx: ClassifyContext = {
   monthlySalaryPaise: 8_500_000,
   salaryCreditDay: 30,
-  selfIdentifiers: ['Arpit Bhushan', 'arpit@okhdfcbank'],
+  selfIdentifiers: ['Aarav Mehta', 'aarav@okhdfcbank'],
   myAccountLast4s: ['1234', '4321'],
   commitments: [
     { id: 1, name: 'Rent', amountPaise: 2_200_000, matchKeywords: 'nobroker, landlord, ramesh kumar', active: true },
@@ -124,8 +124,8 @@ describe('exclusions', () => {
   });
 
   it('payments to my own name / VPA / account', () => {
-    expect(detectExclusion({ ...debit, merchant: 'Arpit Bhushan' }, ctx).reason).toBe('self_transfer');
-    expect(detectExclusion({ ...debit, payeeVpa: 'arpit@okhdfcbank' }, ctx).reason).toBe('self_transfer');
+    expect(detectExclusion({ ...debit, merchant: 'Aarav Mehta' }, ctx).reason).toBe('self_transfer');
+    expect(detectExclusion({ ...debit, payeeVpa: 'aarav@okhdfcbank' }, ctx).reason).toBe('self_transfer');
     expect(detectExclusion({ ...debit, payee: 'A/c XX4321', merchant: 'A/c XX4321' }, ctx).reason).toBe('self_transfer');
     expect(detectExclusion({ ...debit, payee: 'A/c XX9999', merchant: 'A/c XX9999' }, ctx).exclude).toBe(false);
   });
